@@ -158,6 +158,7 @@ if st.session_state.page == "registration":
 # --- PAGE 2: TEACH IT BACK AI ---
 elif st.session_state.page == "ai_tool":
     st.title("🧠 Teach It Back: AI Learning")
+    
     if st.session_state.step > 1 and 'question' not in st.session_state.study_session:
         st.warning("Session expired. Please restart the study session.")
         if st.button("Restart"):
