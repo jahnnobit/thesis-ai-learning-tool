@@ -4,7 +4,7 @@ import sqlite3
 import os
 from datetime import date
 from openai import OpenAI
-from dotenv import load_dotenv
+
 
 # --- CONFIG & INITIALIZATION ---
 ADMIN_USERNAME = "admin"
