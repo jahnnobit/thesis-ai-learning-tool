@@ -10,7 +10,7 @@ from openai import OpenAI
 ADMIN_USERNAME = "admin"
 ADMIN_PASSWORD = "password123" # Use your desired password here
 
-load_dotenv()
+
 
 # --- CONFIG & INITIALIZATION ---
 client = OpenAI(
