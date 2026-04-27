@@ -243,135 +243,120 @@ elif st.session_state.page == "ai_tool":
                 st.warning("Please write your improved answer.")
 
 # STEP 5: Final Evaluation & Comprehensive Report View
-    elif st.session_state.step == 5:
-        if 'final_report' not in st.session_state:
-            st.subheader("🏁 Final Step: Teach It Like I'm 5 (ELI5)")
-            st.write("Explain the concept simply to a beginner. This is the core of the research.")
-            teach = st.text_area("Your Explanation:", placeholder="Describe the logic simply...", height=200)
-            
-            if st.button("Submit & Generate Academic Report"):
-                if teach:
-                    with st.spinner("AI Professor is conducting a deep-dive evaluation..."):
-                        # ENHANCED PROMPT FOR HIGH-DETAIL FEEDBACK
-                        eval_prompt = (
-                            f"Topic: {st.session_state.study_session['question']}. "
-                            f"Attempt 1: {st.session_state.study_session['attempt1']}. "
-                            f"Attempt 2: {st.session_state.study_session['attempt2']}. "
-                            f"ELI5 explanation: {teach}. "
-                            "\n\nCRITICAL: Start your response with exactly this format:\n"
-                            "SCORE1: [score]/10\n"
-                            "SCORE2: [score]/10\n"
-                            "FINAL: [score]/10\n\n"
-                            "DETAILED ACADEMIC REPORT:\n"
-                            "1. COMPARATIVE ANALYSIS: What specific knowledge was missing in Attempt 1?\n"
-                            "2. TECHNICAL ACCURACY: Is the simplified ELI5 explanation actually correct?\n"
-                            "3. SCAFFOLDING SUCCESS: How well did the student use the provided hints?\n"
-                            "4. CRITICAL FEEDBACK: What areas still need work?\n"
-                            "5. SCORE RATIONALE: Why did they receive the scores above?"
-                            "RESOURCES:\n"
-                                "- [Resource 1: Name of book/doc]\n"
-                                "- [Resource 2: Key search term]\n"
-                                "- [Resource 3: Practical exercise tip]"
+elif st.session_state.step == 5:
+    if 'final_report' not in st.session_state:
+        st.subheader("🏁 Final Step: Teach It Like I'm 5 (ELI5)")
+        st.write("Explain the concept simply to a beginner. This is the core of the research.")
+        teach = st.text_area("Your Explanation:", placeholder="Describe the logic simply...", height=200)
+        
+        if st.button("Submit & Generate Academic Report"):
+            if teach:
+                with st.spinner("AI Professor is conducting a deep-dive evaluation..."):
+                    eval_prompt = (
+                        f"Topic: {st.session_state.study_session['question']}. "
+                        f"Attempt 1: {st.session_state.study_session['attempt1']}. "
+                        f"Attempt 2: {st.session_state.study_session['attempt2']}. "
+                        f"ELI5 explanation: {teach}. "
+                        "\n\nCRITICAL: You must provide three numerical scores from 1 to 10.\n"
+                        "Format your response exactly like this at the very beginning:\n"
+                        "SCORE1: [X]/10\n"
+                        "SCORE2: [Y]/10\n"
+                        "FINAL: [Z]/10\n\n"
+                        "Then provide the DETAILED ACADEMIC REPORT below that."
+                    )
+                    
+                    try:
+                        eval_res = client.chat.completions.create(
+                            model=MODEL_NAME,
+                            messages=[
+                                {"role": "system", "content": "You are a senior university professor. You grade strictly on technical accuracy."},
+                                {"role": "user", "content": eval_prompt}
+                            ]
                         )
                         
-                        try:
-                            eval_res = client.chat.completions.create(
-                                model=MODEL_NAME,
-                                messages=[
-                                    {"role": "system", "content": "You are a senior university professor and academic researcher."},
-                                    {"role": "user", "content": eval_prompt}
-                                ]
-                            )
-                            
-                            full_res = eval_res.choices[0].message.content
-                            st.session_state.final_report = full_res
-                            
-                            # PARSE SCORES
-                            lines = full_res.split('\n')
-                            st.session_state.ai_score1 = [l for l in lines if "SCORE1:" in l][0].split(":")[1].strip()
-                            st.session_state.ai_score2 = [l for l in lines if "SCORE2:" in l][0].split(":")[1].strip()
-                            st.session_state.display_score = [l for l in lines if "FINAL:" in l][0].split(":")[1].strip()
+                        full_res = eval_res.choices[0].message.content
+                        st.session_state.final_report = full_res
+                        
+                        # --- ROBUST PARSING USING REGEX ---
+                        import re
+                        def extract_score(label, text):
+                            # This looks for "LABEL: X/10" or just "LABEL: X" and pulls the number
+                            pattern = rf"{label}:\s*(\d+)"
+                            match = re.search(pattern, text, re.IGNORECASE)
+                            return f"{match.group(1)}/10" if match else "0/10"
 
-                            # --- SAVE TO DATABASE (Master Research Record) ---
-                            import sqlite3
-                            conn = sqlite3.connect(DB_PATH)
-                            c = conn.cursor()
-                            c.execute('''INSERT INTO study_logs (timestamp, name, email, university, course, semester, 
+                        st.session_state.ai_score1 = extract_score("SCORE1", full_res)
+                        st.session_state.ai_score2 = extract_score("SCORE2", full_res)
+                        st.session_state.display_score = extract_score("FINAL", full_res)
+
+                        # --- SAVE TO DATABASE ---
+                        import sqlite3
+                        conn = sqlite3.connect(DB_PATH)
+                        c = conn.cursor()
+                        c.execute('''INSERT INTO study_logs (timestamp, name, email, university, course, semester, 
                                                                 question, attempt_1, attempt_2, teach_back, 
                                                                 ai_feedback, score_1, score_2, final_grade) 
-                                         VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?)''', 
-                                      (pd.Timestamp.now().strftime("%Y-%m-%d %H:%M:%S"), 
-                                       st.session_state.user_info['Name'], st.session_state.user_info['Email'], 
-                                       st.session_state.user_info['University'], st.session_state.user_info['Course'], 
-                                       st.session_state.user_info['Semester'], st.session_state.study_session['question'], 
-                                       st.session_state.study_session['attempt1'], st.session_state.study_session['attempt2'], 
-                                       teach, full_res, st.session_state.ai_score1, st.session_state.ai_score2, st.session_state.display_score))
-                            conn.commit()
-                            conn.close()
-                            st.rerun()
+                                     VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?)''', 
+                                  (pd.Timestamp.now().strftime("%Y-%m-%d %H:%M:%S"), 
+                                   st.session_state.user_info['Name'], st.session_state.user_info['Email'], 
+                                   st.session_state.user_info['University'], st.session_state.user_info['Course'], 
+                                   st.session_state.user_info['Semester'], st.session_state.study_session['question'], 
+                                   st.session_state.study_session['attempt1'], st.session_state.study_session['attempt2'], 
+                                   teach, full_res, st.session_state.ai_score1, st.session_state.ai_score2, st.session_state.display_score))
+                        conn.commit()
+                        conn.close()
+                        st.rerun()
 
-                        except Exception as e:
-                            st.error(f"Authentication/API Error: {e}. Check OpenRouter API Key and Balance.")
-                else:
-                    st.warning("Please provide your simplified explanation.")
+                    except Exception as e:
+                        st.error(f"Error: {e}")
+            else:
+                st.warning("Please provide your simplified explanation.")
+    
+    else:
+        # --- FINAL REPORT VIEW (Visuals) ---
+        st.balloons()
+        st.markdown("<h1 style='text-align: center; color: #4CAF50;'>📊 Thesis Learning Analysis</h1>", unsafe_allow_html=True)
         
-        else:
-            # --- FINAL REPORT VIEW ---
-            st.balloons()
-            st.markdown("<h1 style='text-align: center; color: #4CAF50;'>📊 Thesis Learning Analysis</h1>", unsafe_allow_html=True)
-            
-            # --- DYNAMIC DELTA CALCULATION ---
-            try:
-                # Extracting numbers from strings like "7/10" or "7"
-                val1 = float(st.session_state.ai_score1.split('/')[0])
-                val2 = float(st.session_state.ai_score2.split('/')[0])
-                diff = val2 - val1
-                
-                if diff > 0:
-                    delta_label = f"+{diff} Improvement"
-                elif diff < 0:
-                    delta_label = f"{diff} Decrease"
-                else:
-                    delta_label = "No Change"
-            except:
-                delta_label = "Score change unavailable"
+        # Calculate Delta
+        try:
+            s1 = float(st.session_state.ai_score1.split('/')[0])
+            s2 = float(st.session_state.ai_score2.split('/')[0])
+            diff = s2 - s1
+            delta_val = f"{'+' if diff > 0 else ''}{diff} Improvement"
+        except:
+            delta_val = "N/A"
 
-            # Metrics
-            col_a, col_b, col_c = st.columns(3)
-            with col_a: 
-                st.metric(label="Initial Attempt", value=st.session_state.ai_score1)
-            with col_b: 
-                # This will now show RED for negative and GREEN for positive automatically
-                st.metric(label="Refined Attempt", value=st.session_state.ai_score2, delta=delta_label)
-            with col_c: 
-                st.metric(label="Final Learning Grade", value=st.session_state.display_score)
+        col_a, col_b, col_c = st.columns(3)
+        with col_a: st.metric("Initial Score", st.session_state.ai_score1)
+        with col_b: st.metric("Refined Score", st.session_state.ai_score2, delta=delta_val)
+        with col_c: st.metric("Final Grade", st.session_state.display_score)
 
-            st.divider()
+        st.divider()
 
             # Side-by-Side Table
-            st.subheader("📝 Content Evolution")
-            st.table(pd.DataFrame({
+        st.subheader("📝 Content Evolution")
+        st.table(pd.DataFrame({
                 "Evaluation Phase": ["Pre-Hint (Attempt 1)", "Post-Hint (Attempt 2)"],
                 "Response Detail": [st.session_state.study_session['attempt1'], st.session_state.study_session['attempt2']]
             }))
 
             # 3. Highlighted Feedback Box
-            st.subheader("📋 Professor's Detailed Rationale")
+        st.subheader("📋 Professor's Detailed Rationale")
             
-            report_text = st.session_state.final_report
-            main_feedback = report_text.split("RESOURCES:")[0] if "RESOURCES:" in report_text else report_text
+        report_text = st.session_state.final_report
+        main_feedback = report_text.split("RESOURCES:")[0] if "RESOURCES:" in report_text else report_text
             
-            st.markdown(f"""
+        st.markdown(f"""
             <div style="background-color: #1e1e1e; padding: 30px; border-radius: 15px; border-left: 10px solid #4CAF50; color: white; margin-bottom: 20px;">
                 {main_feedback.replace('\n', '<br>')}
             </div>
             """, unsafe_allow_html=True)
 
             # 4. Personalized Learning Path (The Resources)
-            st.divider()
-            st.subheader("🚀 Your Personalized Learning Path")
+        st.divider()
+        st.subheader("🚀 Your Personalized Learning Path")
 
-            if "RESOURCES:" in report_text:
+        if "RESOURCES:" in report_text:
                 resources_part = report_text.split("RESOURCES:")[1]
                 st.success("The AI Tutor recommends these specific materials to bridge your knowledge gaps:")
                 st.markdown(f"""
@@ -380,20 +365,20 @@ elif st.session_state.page == "ai_tool":
                     {resources_part.replace('\n', '<br>')}
                 </div>
                 """, unsafe_allow_html=True)
-            else:
+        else:
                 st.info("Complete the evaluation to see personalized study recommendations.")
 
-            st.divider()
+        st.divider()
             
             # Reset Buttons
-            c1, c2 = st.columns(2)
-            with c1:
+        c1, c2 = st.columns(2)
+        with c1:
                 if st.button("🔄 Study New Topic", use_container_width=True):
                     st.session_state.step = 1
                     st.session_state.study_session = {}
                     if 'final_report' in st.session_state: del st.session_state.final_report
                     st.rerun()
-            with c2:
+        with c2:
                 if st.button("🚪 Logout Student", use_container_width=True):
                     st.session_state.page = "registration"
                     st.session_state.step = 1
