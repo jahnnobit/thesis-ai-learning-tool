@@ -90,23 +90,26 @@ if st.session_state.page == "admin_dashboard" and st.session_state.admin_logged_
     if st.button("🔄 Refresh Data"):
         st.rerun()
 
+    # 1. Fetch Data
     conn = sqlite3.connect(DB_PATH)
-    # We select rowid as 'id' so we have a unique number to delete by
-    full_df = pd.read_sql_query("SELECT rowid as id, * FROM study_logs", conn)
+    # We just use SELECT * because your table already contains an 'id' column
+    full_df = pd.read_sql_query("SELECT * FROM study_logs", conn)
     
     if not full_df.empty:
         st.metric("Total Research Participants", len(full_df))
         st.dataframe(full_df)
         
+        # 2. Download Feature
         csv = full_df.to_csv(index=False).encode('utf-8')
         st.download_button("📥 Download Full Dataset (CSV)", csv, f"thesis_data_{date.today()}.csv", "text/csv")
 
-        # --- NEW: DELETE SECTION ---
+        # 3. DELETE SECTION
         st.divider()
         st.subheader("🗑️ Data Cleanup")
         st.warning("Warning: Deleting a record is permanent and cannot be undone.")
 
         # Create a dropdown to select which student to remove
+        # We use the existing 'id' column from your dataframe
         delete_options = full_df.apply(lambda x: f"{x['id']} | {x['name']} | {x['email']}", axis=1).tolist()
         to_delete = st.selectbox("Select record to remove:", options=delete_options)
 
@@ -114,12 +117,15 @@ if st.session_state.page == "admin_dashboard" and st.session_state.admin_logged_
             # Get the ID number from the start of the string
             selected_id = to_delete.split(" | ")[0]
             
-            c = conn.cursor()
-            c.execute("DELETE FROM study_logs WHERE rowid = ?", (selected_id,))
-            conn.commit()
-            st.success(f"Record ID {selected_id} has been removed.")
-            st.rerun() # Refresh page to show data is gone
-        # ---------------------------
+            try:
+                c = conn.cursor()
+                # Using the standard 'id' column for the deletion criteria
+                c.execute("DELETE FROM study_logs WHERE id = ?", (selected_id,))
+                conn.commit()
+                st.success(f"Record ID {selected_id} has been removed.")
+                st.rerun() 
+            except Exception as e:
+                st.error(f"Error deleting record: {e}")
     else:
         st.warning("No data found in the database yet.")
 
